@@ -35,9 +35,37 @@ load_personas()
 class CampaignRequest(BaseModel):
     advertiser_description: str
     clarification: Optional[str] = None
+    api_key: Optional[str] = None
+
+
+class ValidateKeyRequest(BaseModel):
+    api_key: str
 
 
 # ── Streaming endpoint (primary) ──────────────────────────────────────────────
+
+@app.post("/validate-key")
+async def validate_key(req: ValidateKeyRequest):
+    """
+    Tests an Anthropic API key by making a minimal API call.
+    Returns {valid: true} on success or raises 400 with the error message.
+    """
+    key = req.api_key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="api_key is required")
+    try:
+        client = anthropic.Anthropic(api_key=key)
+        client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=1,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+        return {"valid": True}
+    except anthropic.AuthenticationError:
+        raise HTTPException(status_code=400, detail="Invalid API key — authentication failed")
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
 
 @app.post("/campaign/stream")
 async def stream_campaign(req: CampaignRequest):
@@ -45,8 +73,9 @@ async def stream_campaign(req: CampaignRequest):
     SSE endpoint. Streams agent progress events followed by the final result.
     Each event: data: {json}\\n\\n
     """
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise HTTPException(status_code=500, detail="ANTHROPIC_API_KEY is not set")
+    api_key = req.api_key.strip() if req.api_key else os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="No API key provided. Set one in the UI or in .env.local")
     if not req.advertiser_description.strip():
         raise HTTPException(status_code=400, detail="advertiser_description is required")
 
@@ -54,7 +83,7 @@ async def stream_campaign(req: CampaignRequest):
 
     def run_agent_thread():
         try:
-            for event in run_campaign_agent(req.advertiser_description, req.clarification):
+            for event in run_campaign_agent(req.advertiser_description, req.clarification, api_key):
                 event_queue.put(event)
         except Exception as exc:
             event_queue.put({"type": "error", "message": str(exc)})

@@ -356,6 +356,48 @@ export default function Home() {
   const [clarificationAnswer, setClarificationAnswer] = useState("");
   const abortRef = useRef<AbortController | null>(null);
 
+  const [apiKey, setApiKey] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem("disco_api_key") ?? "" : ""
+  );
+  const [keyInput, setKeyInput] = useState("");
+  const [keyStatus, setKeyStatus] = useState<"idle" | "checking" | "valid" | "invalid">("idle");
+  const [showKeyInput, setShowKeyInput] = useState(false);
+
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+
+  const validateAndSaveKey = async () => {
+    const key = keyInput.trim();
+    if (!key) return;
+    setKeyStatus("checking");
+    try {
+      const res = await fetch(`${apiBase}/validate-key`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ api_key: key }),
+      });
+      if (res.ok) {
+        setApiKey(key);
+        localStorage.setItem("disco_api_key", key);
+        setKeyStatus("valid");
+        setShowKeyInput(false);
+        setKeyInput("");
+      } else {
+        const data = await res.json().catch(() => ({ detail: "Invalid key" }));
+        setKeyStatus("invalid");
+        setError(data.detail ?? "Invalid API key");
+      }
+    } catch {
+      setKeyStatus("invalid");
+      setError("Could not reach backend to validate key");
+    }
+  };
+
+  const removeKey = () => {
+    setApiKey("");
+    localStorage.removeItem("disco_api_key");
+    setKeyStatus("idle");
+  };
+
   const startGeneration = async (desc: string, clarification?: string) => {
     abortRef.current?.abort();
     abortRef.current = new AbortController();
@@ -366,12 +408,11 @@ export default function Home() {
     setClarificationQ(null);
     setClarificationAnswer("");
 
-    const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
     try {
       const res = await fetch(`${apiBase}/campaign/stream`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ advertiser_description: desc, clarification: clarification ?? null }),
+        body: JSON.stringify({ advertiser_description: desc, clarification: clarification ?? null, api_key: apiKey || null }),
         signal: abortRef.current.signal,
       });
       if (!res.ok) {
@@ -419,11 +460,52 @@ export default function Home() {
           <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center">
             <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" /></svg>
           </div>
-          <div>
+          <div className="flex-1">
             <div className="font-bold text-gray-900 leading-none">Disco Campaign Builder</div>
             <div className="text-xs text-gray-500">AI-powered publisher matching & ad creative</div>
           </div>
+          <div className="flex items-center gap-2">
+            {apiKey ? (
+              <>
+                <span className="flex items-center gap-1.5 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+                  LLM connected
+                </span>
+                <button onClick={removeKey} className="text-xs text-gray-400 hover:text-gray-600 underline">remove key</button>
+              </>
+            ) : (
+              <button onClick={() => setShowKeyInput(true)}
+                className="text-xs bg-amber-50 border border-amber-300 text-amber-800 hover:bg-amber-100 px-3 py-1.5 rounded-full font-medium transition-colors">
+                Set API key
+              </button>
+            )}
+          </div>
         </div>
+        {showKeyInput && (
+          <div className="border-t border-gray-100 bg-gray-50 px-4 py-3">
+            <div className="max-w-5xl mx-auto flex items-center gap-3">
+              <span className="text-xs text-gray-500 shrink-0">Anthropic API key:</span>
+              <input
+                autoFocus
+                type="password"
+                className="flex-1 border border-gray-300 rounded-lg px-3 py-1.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="sk-ant-..."
+                value={keyInput}
+                onChange={(e) => { setKeyInput(e.target.value); setKeyStatus("idle"); }}
+                onKeyDown={(e) => { if (e.key === "Enter") validateAndSaveKey(); if (e.key === "Escape") { setShowKeyInput(false); setKeyInput(""); } }}
+              />
+              <button onClick={validateAndSaveKey} disabled={!keyInput.trim() || keyStatus === "checking"}
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white text-xs font-semibold px-4 py-1.5 rounded-lg transition-colors shrink-0">
+                {keyStatus === "checking" ? "Checking..." : "Save & validate"}
+              </button>
+              <button onClick={() => { setShowKeyInput(false); setKeyInput(""); setKeyStatus("idle"); }}
+                className="text-xs text-gray-400 hover:text-gray-600 shrink-0">Cancel</button>
+            </div>
+            {keyStatus === "invalid" && (
+              <div className="max-w-5xl mx-auto mt-1.5 text-xs text-red-600">Key validation failed — check the key and try again.</div>
+            )}
+          </div>
+        )}
       </header>
       <main className="max-w-5xl mx-auto px-4 py-8">
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-6">

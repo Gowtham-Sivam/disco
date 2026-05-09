@@ -29,8 +29,8 @@ MAX_QUERY_ITERATIONS = 5
 ALL_TOOLS = [QUERY_DATA_TOOL, ASK_CLARIFICATION_TOOL, CAMPAIGN_TOOL_SCHEMA]
 
 
-def run_campaign_agent(description: str, clarification: str | None = None) -> Generator[dict, None, None]:
-    client = anthropic.Anthropic()
+def run_campaign_agent(description: str, clarification: str | None = None, api_key: str | None = None) -> Generator[dict, None, None]:
+    client = anthropic.Anthropic(api_key=api_key) if api_key else anthropic.Anthropic()
 
     # ── Phase 1: load metadata ────────────────────────────────────────────────
     yield {"type": "metadata_loading", "message": "Loading dataset metadata..."}
