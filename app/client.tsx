@@ -471,7 +471,9 @@ export default function Home() {
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
                   LLM connected
                 </span>
-                <button onClick={removeKey} className="text-xs text-gray-400 hover:text-gray-600 underline">remove key</button>
+                <button onClick={removeKey} className="text-xs bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 px-3 py-1.5 rounded-full font-medium transition-colors">
+                  Disconnect
+                </button>
               </>
             ) : (
               <button onClick={() => setShowKeyInput(true)}
